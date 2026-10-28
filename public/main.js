@@ -24544,7 +24544,7 @@ function fetchQuestionsForChunk(chunks, idx) {
   }
   return qCache.get(idx);
 }
-function startListening() {
+function startListening(onPartial) {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) throw new Error("Speech recognition isn't supported in this browser. Use Chrome or Edge.");
   const rec = new SR();
@@ -24563,6 +24563,8 @@ function startListening() {
       if (r.isFinal) finals += " " + r[0].transcript;
       else interim += " " + r[0].transcript;
     }
+    const text = (finals + " " + interim).trim();
+    if (onPartial) onPartial(text);
   };
   rec.onend = () => {
     if (active) {
@@ -24584,12 +24586,45 @@ function startListening() {
     })
   };
 }
-function Passage({ text, result }) {
+function normalizeWord(token) {
+  return token.toLowerCase().replace(/[’‘]/g, "'").replace(/[^\p{L}\p{N}'-]/gu, "").trim();
+}
+function liveWordStates(expected, heard) {
+  const expectedTokens = expected.split(/\s+/).filter(Boolean).map(normalizeWord).filter(Boolean);
+  const heardTokens = heard.toLowerCase().replace(/[’‘]/g, "'").replace(/[^\p{L}\p{N}'\s-]/gu, " ").split(/\s+/).map(normalizeWord).filter(Boolean);
+  const states = expectedTokens.map(() => "pending");
+  let heardIndex = 0;
+  for (let i = 0; i < expectedTokens.length && heardIndex < heardTokens.length; i++) {
+    const expectedWord = expectedTokens[i];
+    const heardWord = heardTokens[heardIndex];
+    if (expectedWord === heardWord) {
+      states[i] = "ok";
+      heardIndex += 1;
+      continue;
+    }
+    states[i] = "miss";
+    heardIndex += 1;
+  }
+  return states;
+}
+function Passage({ text, result, liveHeard }) {
   const lines = text.split("\n");
   let wordIndex = 0;
+  if (liveHeard) {
+    const liveStates = liveWordStates(text, liveHeard);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "passage", children: lines.map((line, lineIndex) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: line.split(/\s+/).filter(Boolean).map((token, tokenIndex) => {
+      const state = liveStates[wordIndex] ?? "pending";
+      wordIndex += 1;
+      return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: state === "ok" ? "ok current" : state === "miss" ? "miss" : void 0, children: token }),
+        " "
+      ] }, `${lineIndex}-${tokenIndex}`);
+    }) }, lineIndex)) });
+  }
+  let wordCursor = 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "passage", children: lines.map((line, lineIndex) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: line.split(/\s+/).filter(Boolean).map((token, tokenIndex) => {
-    const ok = result ? result.words[wordIndex]?.ok !== false : true;
-    wordIndex += 1;
+    const ok = result ? result.words[wordCursor]?.ok !== false : true;
+    wordCursor += 1;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: result ? ok ? "ok" : "miss" : void 0, children: token }),
       " "
@@ -24643,6 +24678,8 @@ function ReadScreen({
   status,
   loading,
   isRecording,
+  result,
+  heard,
   onPageSelect,
   onPrevChunk,
   onNextChunk,
@@ -24666,7 +24703,7 @@ function ReadScreen({
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { id: "page-select", value: pageIndex, onChange: (e) => onPageSelect(Number(e.target.value)), children: pages.map((page) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: page.page - 1, children: page.page }, page.page)) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "muted", children: pageLabel })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Passage, { text: currentChunk })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Passage, { text: currentChunk, result: result ?? void 0, liveHeard: isRecording ? heard : void 0 })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "alt", onClick: onPrevChunk, children: "\u2190 Previous" }),
@@ -24823,6 +24860,7 @@ function App() {
   const [status, setStatus] = (0, import_react.useState)("Press the button, then read the lines out loud.");
   const [result, setResult] = (0, import_react.useState)(null);
   const [heard, setHeard] = (0, import_react.useState)("");
+  const [liveResult, setLiveResult] = (0, import_react.useState)(null);
   const [loading, setLoading] = (0, import_react.useState)(false);
   const [quiz, setQuiz] = (0, import_react.useState)([]);
   const [isRecording, setIsRecording] = (0, import_react.useState)(false);
@@ -24846,6 +24884,7 @@ function App() {
   const resetReadState = () => {
     setResult(null);
     setHeard("");
+    setLiveResult(null);
     setQuiz([]);
     setStatus("Press the button, then read the lines out loud.");
     setIsRecording(false);
@@ -24912,7 +24951,11 @@ function App() {
   const beginListening = async () => {
     if (isRecording) return;
     try {
-      sessionRef.current = startListening();
+      sessionRef.current = startListening((text) => {
+        const next = text.trim();
+        setHeard(next);
+        setLiveResult(next ? clarity(currentChunk, next) : null);
+      });
       setIsRecording(true);
       setStatus("Listening\u2026 read out loud");
     } catch (error) {
@@ -24927,6 +24970,7 @@ function App() {
     const score = clarity(currentChunk, transcript);
     setResult(score);
     setHeard(transcript);
+    setLiveResult(null);
     setLastClarity(score.percent);
     setIsRecording(false);
     setScreen("result");
@@ -25003,6 +25047,8 @@ function App() {
             status,
             loading,
             isRecording,
+            result: liveResult ?? result,
+            heard,
             onPageSelect: (selectedPageIndex) => goToPage(pageMeta[selectedPageIndex]?.page ?? 1),
             onPrevChunk: goToPreviousChunk,
             onNextChunk: goToNextChunk,

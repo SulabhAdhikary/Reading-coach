@@ -25,7 +25,7 @@ function fetchQuestionsForChunk(chunks: string[], idx: number): Promise<Q[]> {
   return qCache.get(idx)!;
 }
 
-function startListening() {
+function startListening(onPartial?: (text: string) => void) {
   const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!SR) throw new Error("Speech recognition isn't supported in this browser. Use Chrome or Edge.");
 
@@ -46,6 +46,8 @@ function startListening() {
       if (r.isFinal) finals += " " + r[0].transcript;
       else interim += " " + r[0].transcript;
     }
+    const text = (finals + " " + interim).trim();
+    if (onPartial) onPartial(text);
   };
 
   rec.onend = () => {
@@ -68,17 +70,72 @@ function startListening() {
   };
 }
 
-function Passage({ text, result }: { text: string; result?: Clarity }) {
+function normalizeWord(token: string): string {
+  return token.toLowerCase().replace(/[’‘]/g, "'").replace(/[^\p{L}\p{N}'-]/gu, "").trim();
+}
+
+function liveWordStates(expected: string, heard: string): Array<"pending" | "ok" | "miss"> {
+  const expectedTokens = expected.split(/\s+/).filter(Boolean).map(normalizeWord).filter(Boolean);
+  const heardTokens = heard
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[^\p{L}\p{N}'\s-]/gu, " ")
+    .split(/\s+/)
+    .map(normalizeWord)
+    .filter(Boolean);
+
+  const states: Array<"pending" | "ok" | "miss"> = expectedTokens.map(() => "pending");
+  let heardIndex = 0;
+
+  for (let i = 0; i < expectedTokens.length && heardIndex < heardTokens.length; i++) {
+    const expectedWord = expectedTokens[i];
+    const heardWord = heardTokens[heardIndex];
+    if (expectedWord === heardWord) {
+      states[i] = "ok";
+      heardIndex += 1;
+      continue;
+    }
+
+    states[i] = "miss";
+    heardIndex += 1;
+  }
+
+  return states;
+}
+
+function Passage({ text, result, liveHeard }: { text: string; result?: Clarity; liveHeard?: string }) {
   const lines = text.split("\n");
   let wordIndex = 0;
 
+  if (liveHeard) {
+    const liveStates = liveWordStates(text, liveHeard);
+    return (
+      <div className="passage">
+        {lines.map((line, lineIndex) => (
+          <div key={lineIndex}>
+            {line.split(/\s+/).filter(Boolean).map((token, tokenIndex) => {
+              const state = liveStates[wordIndex] ?? "pending";
+              wordIndex += 1;
+              return (
+                <React.Fragment key={`${lineIndex}-${tokenIndex}`}>
+                  <span className={state === "ok" ? "ok current" : state === "miss" ? "miss" : undefined}>{token}</span>{" "}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  let wordCursor = 0;
   return (
     <div className="passage">
       {lines.map((line, lineIndex) => (
         <div key={lineIndex}>
           {line.split(/\s+/).filter(Boolean).map((token, tokenIndex) => {
-            const ok = result ? result.words[wordIndex]?.ok !== false : true;
-            wordIndex += 1;
+            const ok = result ? result.words[wordCursor]?.ok !== false : true;
+            wordCursor += 1;
             return (
               <React.Fragment key={`${lineIndex}-${tokenIndex}`}>
                 <span className={result ? (ok ? "ok" : "miss") : undefined}>{token}</span>{" "}
@@ -142,6 +199,8 @@ function ReadScreen({
   status,
   loading,
   isRecording,
+  result,
+  heard,
   onPageSelect,
   onPrevChunk,
   onNextChunk,
@@ -157,6 +216,8 @@ function ReadScreen({
   status: string;
   loading: boolean;
   isRecording: boolean;
+  result?: Clarity | null;
+  heard?: string;
   onPageSelect: (pageIndex: number) => void;
   onPrevChunk: () => void;
   onNextChunk: () => void;
@@ -181,7 +242,7 @@ function ReadScreen({
           </select>
           <span className="muted">{pageLabel}</span>
         </div>
-        <Passage text={currentChunk} />
+        <Passage text={currentChunk} result={result ?? undefined} liveHeard={isRecording ? heard : undefined} />
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button className="alt" onClick={onPrevChunk}>← Previous</button>
@@ -369,6 +430,7 @@ function App() {
   const [status, setStatus] = useState("Press the button, then read the lines out loud.");
   const [result, setResult] = useState<Clarity | null>(null);
   const [heard, setHeard] = useState("");
+  const [liveResult, setLiveResult] = useState<Clarity | null>(null);
   const [loading, setLoading] = useState(false);
   const [quiz, setQuiz] = useState<Q[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -396,6 +458,7 @@ function App() {
   const resetReadState = () => {
     setResult(null);
     setHeard("");
+    setLiveResult(null);
     setQuiz([]);
     setStatus("Press the button, then read the lines out loud.");
     setIsRecording(false);
@@ -470,7 +533,11 @@ function App() {
   const beginListening = async () => {
     if (isRecording) return;
     try {
-      sessionRef.current = startListening();
+      sessionRef.current = startListening((text) => {
+        const next = text.trim();
+        setHeard(next);
+        setLiveResult(next ? clarity(currentChunk, next) : null);
+      });
       setIsRecording(true);
       setStatus("Listening… read out loud");
     } catch (error) {
@@ -486,6 +553,7 @@ function App() {
     const score = clarity(currentChunk, transcript);
     setResult(score);
     setHeard(transcript);
+    setLiveResult(null);
     setLastClarity(score.percent);
     setIsRecording(false);
     setScreen("result");
@@ -568,6 +636,8 @@ function App() {
             status={status}
             loading={loading}
             isRecording={isRecording}
+            result={liveResult ?? result}
+            heard={heard}
             onPageSelect={(selectedPageIndex) => goToPage(pageMeta[selectedPageIndex]?.page ?? 1)}
             onPrevChunk={goToPreviousChunk}
             onNextChunk={goToNextChunk}

@@ -13,7 +13,26 @@
   h1 { font-size: 1.4rem; } h2 { font-size: 1.15rem; margin: 0 0 12px; }
   .card { background:var(--card); border-radius:16px; padding:20px; margin:16px 0; box-shadow:0 1px 4px #0002; }
   .passage { font-size: 1.7rem; line-height: 1.9; }
-  .passage .ok { color: var(--ok); } .passage .miss { color: var(--miss); text-decoration: underline wavy; }
+  .passage span {
+    display: inline-block;
+    min-width: 0.5ch;
+    padding: 0 0.12em;
+    border-radius: 0.25em;
+  }
+  .passage .ok {
+    background: color-mix(in srgb, var(--ok) 22%, transparent);
+    color: var(--fg);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ok) 65%, transparent);
+  }
+  .passage .ok.current {
+    background: color-mix(in srgb, var(--ok) 48%, white);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ok) 80%, transparent), 0 0 0 2px color-mix(in srgb, var(--ok) 30%, transparent);
+  }
+  .passage .miss {
+    color: var(--miss);
+    text-decoration: underline wavy;
+    background: color-mix(in srgb, var(--miss) 12%, transparent);
+  }
   button { font: inherit; border:0; border-radius:12px; padding:12px 20px; margin:6px 6px 6px 0; background:var(--accent); color:#fff; cursor:pointer; }
   button.alt { background:transparent; color:var(--accent); border:2px solid var(--accent); }
   button.big { font-size:1.3rem; padding:16px 28px; } button.rec { background:var(--miss); }
