@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading Coach</title>
+<style>
+  :root { --bg:#fbf8f2; --fg:#23303b; --card:#fff; --ok:#1f8a4c; --miss:#c0392b; --accent:#3b6fd4; --muted:#6b7782; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b2229; --fg:#e8edf1; --card:#252e37; --ok:#5cd08a; --miss:#ff7b6b; --accent:#7aa2f0; --muted:#9aa7b2; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .card { background:var(--card); border-radius:16px; padding:20px; margin:16px 0; box-shadow:0 1px 4px #0002; }
+  .passage { font-size: 1.7rem; line-height: 1.9; }
+  .passage .ok { color: var(--ok); } .passage .miss { color: var(--miss); text-decoration: underline wavy; }
+  button { font: inherit; border:0; border-radius:12px; padding:12px 20px; margin:6px 6px 6px 0; background:var(--accent); color:#fff; cursor:pointer; }
+  button.alt { background:transparent; color:var(--accent); border:2px solid var(--accent); }
+  button.big { font-size:1.3rem; padding:16px 28px; } button.rec { background:var(--miss); }
+  button:disabled { opacity:.6; cursor:default; }
+  .opt { display:block; width:100%; text-align:left; background:var(--card); color:var(--fg); border:2px solid var(--muted); font-size:1.15rem; }
+  .opt.right { border-color:var(--ok); background:color-mix(in srgb, var(--ok) 18%, var(--card)); }
+  .opt.wrong { border-color:var(--miss); background:color-mix(in srgb, var(--miss) 18%, var(--card)); }
+  .muted { color:var(--muted); } .score { font-size:2.2rem; font-weight:700; }
+  table { width:100%; border-collapse:collapse; } td, th { padding:6px 8px; text-align:left; border-bottom:1px solid #8884; }
+</style>
+</head>
+<body><div id="app"></div><script type="module" src="main.js"></script></body>
+</html>
